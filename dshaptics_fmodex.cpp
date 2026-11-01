@@ -23,7 +23,7 @@
 #include <string>
 #include <cmath>
 #include "MinHook.h"
-#include "rumble_tap.h"     // the game's own vibration requests: logged beside our event lines, held back from the pad
+#include "rumble_note.h"     // our event lines into the game's vibration log (sonmat_rumble.dll does the vibration)
 
 typedef int (*PlaySound_t)(void* sys, int channelid, void* sound, bool paused, void** channel);
 typedef int (*GetName_t)(void* sound, char* name, int len);
@@ -177,7 +177,6 @@ static DWORD WINAPI init(LPVOID self) {
             if (!at || !g_name) { result = "playSound / getName export not found"; break; }
             void* tramp = nullptr;
             if (MH_Initialize() != MH_OK) { result = "MinHook init failed"; break; }
-            rumble_tap::start("C:\\Users\\Public\\dshaptics\\");      // same folder as events_fmod.log
             // the placing hooks first: playSound only holds a sound back when setPaused is there to let it go
             bool a3 = hook(fm, "?set3DAttributes@Channel@FMOD@@QEAA?AW4FMOD_RESULT@@PEBUFMOD_VECTOR@@0@Z", (void*)hk_set3d, (void**)&g_set3d);
             bool ls = hook(fm, "?set3DListenerAttributes@System@FMOD@@QEAA?AW4FMOD_RESULT@@HPEBUFMOD_VECTOR@@000@Z", (void*)hk_listener, (void**)&g_listener);
