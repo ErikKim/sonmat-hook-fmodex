@@ -2,7 +2,7 @@
 
 A part of 손맛 햅틱 / Sonmat Haptics (`sonmat`): dshaptics_fmodex.dll.
 
-Hook for games that ship FMOD Ex (fmodex64.dll: Sekiro): FMOD::System::playSound by its exported name, no byte patterns.
+Hook for games that ship FMOD Ex (fmodex64.dll: Sekiro): FMOD::System::playSound by its exported name, no byte patterns. Each line carries the sound's distance from the listener and, once the listener's orientation is known, its side (`|d<cm>p<-100..100>`).
 
 The app does not carry this in its installer for good: it fetches the release zip that `sonmat-games/parts.json` names
 (address + SHA-256) into `<app>/parts/hook-fmodex/` when a game needs it (`sonmat/tools/partfetch.py`). A change here reaches

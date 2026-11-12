@@ -16,6 +16,11 @@
 // taken from Channel::set3DAttributes between playSound(paused) and Channel::setPaused(false) - the event
 // system starts a sound paused, places it, then lets it go. A sound never placed (2D) has an empty owner; one
 // never unpaused through this call is written 80 ms after it was started, with whatever is known by then.
+// Which side it is on comes after the distance once the listener's orientation is known (2026-11-12):
+//     ue:<name>|d<centimetres>p<side>      side -100 = straight left of the listener ... 0 ahead or behind ... 100 right
+// right = up x forward: FMOD's default left-handed axes (x right, y up, z forward). A game that inits FMOD with
+// FMOD_INIT_3D_RIGHTHANDED gets the sides swapped - the engine's profile can mirror them (not knowable from the
+// packed sekiro.exe; seen in the first run). Nothing reads past "d" today, so the old engine is unaffected.
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -78,15 +83,22 @@ static SetPaused_t g_setPaused = nullptr;
 static Listener_t g_listener = nullptr;
 struct Pending { std::string name; bool placed; FV pos; ULONGLONG t; };
 static std::unordered_map<void*, Pending> g_pending;        // started paused, not let go yet (guarded by g_lock)
-static FV g_ear = {0, 0, 0};
-static bool g_hasEar = false;
+static FV g_ear = {0, 0, 0}, g_fwd = {0, 0, 0}, g_up = {0, 0, 0};
+static bool g_hasEar = false, g_hasDir = false;
 
 static void emit(const Pending& p) {                         // g_lock held
     char line[700]; int n;
     if (p.placed && g_hasEar) {
         float dx = p.pos.x - g_ear.x, dy = p.pos.y - g_ear.y, dz = p.pos.z - g_ear.z;
         double d = sqrt((double)dx * dx + (double)dy * dy + (double)dz * dz);
-        n = snprintf(line, sizeof line, "ue:%s|d%d\n", p.name.c_str(), (int)(d * 100 > 9999999 ? 9999999 : d * 100));
+        int cm = (int)(d * 100 > 9999999 ? 9999999 : d * 100);
+        if (g_hasDir && d > 1e-3) {
+            FV r = {g_up.y * g_fwd.z - g_up.z * g_fwd.y, g_up.z * g_fwd.x - g_up.x * g_fwd.z, g_up.x * g_fwd.y - g_up.y * g_fwd.x};
+            double rl = sqrt((double)r.x * r.x + (double)r.y * r.y + (double)r.z * r.z);
+            double side = rl > 1e-6 ? (dx * r.x + dy * r.y + dz * r.z) / (rl * d) : 0.0;
+            side = side > 1 ? 1 : side < -1 ? -1 : side;
+            n = snprintf(line, sizeof line, "ue:%s|d%dp%d\n", p.name.c_str(), cm, (int)(side * 100));
+        } else n = snprintf(line, sizeof line, "ue:%s|d%d\n", p.name.c_str(), cm);
     } else n = snprintf(line, sizeof line, "ue:%s|\n", p.name.c_str());
     DWORD w; WriteFile(g_log, line, (DWORD)n, &w, nullptr);
     rumble_tap::note(line, n);
@@ -143,7 +155,12 @@ static int hk_setPaused(void* ch, bool paused) {
 }
 
 static int hk_listener(void* sys, int listener, const FV* pos, const FV* vel, const FV* fwd, const FV* up) {
-    if (pos && listener == 0) { g_ear = *pos; g_hasEar = true; }
+    if (listener == 0) {
+        EnterCriticalSection(&g_lock);
+        if (pos) { g_ear = *pos; g_hasEar = true; }
+        if (fwd && up) { g_fwd = *fwd; g_up = *up; g_hasDir = true; }      // either may be left out (null): kept
+        LeaveCriticalSection(&g_lock);
+    }
     return g_listener(sys, listener, pos, vel, fwd, up);
 }
 
